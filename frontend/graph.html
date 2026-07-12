@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Neo4j Graph — DB Bridge</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <style>
+    :root {
+      --bg:      #04080f;
+      --surface: #080f1c;
+      --border:  #0f1f35;
+      --text:    #e2eeff;
+      --muted:   #3d5a80;
+      --student: #38bdf8;
+      --dept:    #fb923c;
+      --city:    #a78bfa;
+      --course:  #34d399;
+      --edge:    rgba(255,255,255,0.07);
+      --glow-s:  rgba(56,189,248,0.4);
+      --glow-d:  rgba(251,146,60,0.4);
+      --glow-c:  rgba(167,139,250,0.4);
+      --glow-co: rgba(52,211,153,0.4);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+    }
+
+    /* Star field */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.15) 0, transparent 0),
+        radial-gradient(1px 1px at 80% 10%, rgba(255,255,255,0.1) 0, transparent 0),
+        radial-gradient(1px 1px at 50% 70%, rgba(255,255,255,0.12) 0, transparent 0),
+        radial-gradient(1px 1px at 10% 90%, rgba(255,255,255,0.08) 0, transparent 0),
+        radial-gradient(1px 1px at 90% 60%, rgba(255,255,255,0.1) 0, transparent 0);
+      pointer-events: none;
+    }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0;
+      width: 300px; z-index: 10;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      padding: 28px 24px;
+      overflow-y: auto;
+    }
+
+    .logo {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 32px;
+    }
+    .logo-mark {
+      width: 38px; height: 38px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--student), var(--city));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .logo-text { font-weight: 800; font-size: 17px; }
+    .logo-sub  { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+    .sidebar-section { margin-bottom: 28px; }
+    .sidebar-label {
+      font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--muted); font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 12px; font-weight: 500;
+    }
+
+    .btn-refresh {
+      width: 100%; padding: 12px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--student), var(--city));
+      border: none; color: #000; font-family: 'Outfit', sans-serif;
+      font-weight: 700; font-size: 14px; cursor: pointer;
+      transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-refresh:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(56,189,248,0.3); }
+    .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .btn-nav {
+      width: 100%; padding: 10px; border-radius: 8px;
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); font-family: 'Outfit', sans-serif;
+      font-size: 13px; font-weight: 500; cursor: pointer;
+      transition: all 0.2s; margin-top: 8px;
+    }
+    .btn-nav:hover { border-color: var(--student); color: var(--student); background: rgba(56,189,248,0.05); }
+
+    /* Legend */
+    .legend { display: flex; flex-direction: column; gap: 8px; }
+    .legend-item { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+    .legend-dot {
+      width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+    }
+    .legend-count {
+      margin-left: auto; font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; color: var(--muted);
+    }
+
+    /* Stats */
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-box {
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 12px; text-align: center;
+    }
+    .stat-num { font-size: 26px; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+    .stat-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+
+    /* Node detail panel */
+    #nodeDetail {
+      background: rgba(56,189,248,0.05);
+      border: 1px solid rgba(56,189,248,0.2);
+      border-radius: 12px; padding: 16px; margin-top: 4px;
+      display: none;
+      animation: fadeIn 0.2s ease;
+    }
+    #nodeDetail.show { display: block; }
+    @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+    .detail-title { font-weight: 700; font-size: 15px; margin-bottom: 8px; color: var(--student); }
+    .detail-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .detail-row:last-child { border: none; }
+    .detail-key { color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+    .detail-val { color: var(--text); font-weight: 500; }
+
+    /* ── GRAPH CANVAS ── */
+    #graphContainer {
+      position: fixed;
+      left: 300px; top: 0; right: 0; bottom: 0;
+    }
+    svg { width: 100%; height: 100%; }
+
+    /* Nodes */
+    .node circle {
+      stroke-width: 2; cursor: pointer;
+      transition: r 0.2s, filter 0.2s;
+    }
+    .node:hover circle { filter: brightness(1.4); }
+    .node text {
+      font-family: 'Outfit', sans-serif; font-size: 11px;
+      fill: rgba(255,255,255,0.75); pointer-events: none;
+      text-anchor: middle; dominant-baseline: middle;
+    }
+
+    /* Node type colors */
+    .node.Student circle   { fill: rgba(56,189,248,0.15);  stroke: var(--student); }
+    .node.Department circle{ fill: rgba(251,146,60,0.15);  stroke: var(--dept); }
+    .node.City circle      { fill: rgba(167,139,250,0.15); stroke: var(--city); }
+    .node.Course circle    { fill: rgba(52,211,153,0.15);  stroke: var(--course); }
+    .node.Student.selected circle   { fill: rgba(56,189,248,0.35); filter: drop-shadow(0 0 12px var(--glow-s)); }
+    .node.Department.selected circle{ fill: rgba(251,146,60,0.35); filter: drop-shadow(0 0 12px var(--glow-d)); }
+    .node.City.selected circle      { fill: rgba(167,139,250,0.35); filter: drop-shadow(0 0 12px var(--glow-c)); }
+    .node.Course.selected circle    { fill: rgba(52,211,153,0.35);  filter: drop-shadow(0 0 12px var(--glow-co)); }
+
+    /* Edges */
+    .link { stroke: var(--edge); stroke-width: 1.5; }
+    .link-label {
+      font-family: 'JetBrains Mono', monospace; font-size: 9px;
+      fill: rgba(255,255,255,0.2); text-anchor: middle; pointer-events: none;
+    }
+
+    /* Arrowhead */
+    marker path { fill: rgba(255,255,255,0.15); }
+
+    /* ── LOADING SCREEN ── */
+    #loadingScreen {
+      position: fixed; inset: 0; z-index: 100;
+      background: var(--bg);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 20px;
+    }
+    .loader-ring {
+      width: 60px; height: 60px; border-radius: 50%;
+      border: 3px solid var(--border);
+      border-top-color: var(--student);
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader-text { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--muted); }
+
+    /* ── EMPTY STATE ── */
+    #emptyState {
+      position: absolute; inset: 0;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+      text-align: center; padding: 40px;
+    }
+    #emptyState.show { display: flex; }
+    .empty-icon { font-size: 64px; }
+    .empty-title { font-size: 22px; font-weight: 700; }
+    .empty-sub { color: var(--muted); font-size: 14px; max-width: 340px; line-height: 1.6; }
+
+    /* ── MINI STATUS BAR ── */
+    #statusBar {
+      position: fixed; bottom: 20px; right: 20px; z-index: 20;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 16px;
+      font-family: 'JetBrains Mono', monospace; font-size: 11px;
+      color: var(--muted); display: flex; align-items: center; gap: 8px;
+    }
+    #statusBar .pulse {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--course); animation: pulse 2s ease infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+
+    /* Auto-refresh indicator */
+    #refreshRing {
+      position: fixed; top: 20px; right: 20px; z-index: 20;
+      width: 44px; height: 44px;
+    }
+    #refreshRing svg { width: 44px; height: 44px; transform: rotate(-90deg); }
+    #refreshRing circle {
+      fill: none; stroke: var(--student);
+      stroke-width: 3; stroke-dasharray: 113;
+      stroke-dashoffset: 113; stroke-linecap: round;
+      transition: stroke-dashoffset 0.1s linear;
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loadingScreen">
+  <div class="loader-ring"></div>
+  <div class="loader-text">Fetching Neo4j graph data...</div>
+</div>
+
+<!-- AUTO REFRESH RING -->
+<div id="refreshRing" title="Auto-refreshes every 5s">
+  <svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" id="ringCircle"/></svg>
+</div>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="logo">
+    <div class="logo-mark">🔵</div>
+    <div>
+      <div class="logo-text">Neo4j Graph</div>
+      <div class="logo-sub">Live graph view</div>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-label">Actions</div>
+    <button class="btn-refresh" id="btnRefresh" onclick="loadGraph()">
+      <span>↻</span> Refresh Graph
+    </button>
+    <button class="btn-nav" onclick="window.location.href='form.html'">← Back to Form</button>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-label">Stats</div>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-num" id="statNodes" style="color:var(--student)">—</div>
+        <div class="stat-lbl">Nodes</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" id="statEdges" style="color:var(--course)">—</div>
+        <div class="stat-lbl">Edges</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-label">Node Types</div>
+    <div class="legend" id="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--student)"></div> Student <span class="legend-count" id="cntStudent">0</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--dept)"></div> Department <span class="legend-count" id="cntDept">0</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--city)"></div> City <span class="legend-count" id="cntCity">0</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--course)"></div> Course <span class="legend-count" id="cntCourse">0</span></div>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-label">Selected Node</div>
+    <div id="nodeDetail">
+      <div class="detail-title" id="detailName">—</div>
+      <div id="detailRows"></div>
+    </div>
+    <div id="nodeHint" style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace">
+      Click any node to inspect
+    </div>
+  </div>
+</div>
+
+<!-- GRAPH -->
+<div id="graphContainer">
+  <svg id="graphSvg">
+    <defs>
+      <marker id="arrow" markerWidth="8" markerHeight="8" refX="20" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z"/>
+      </marker>
+    </defs>
+    <g id="graphGroup"></g>
+  </svg>
+  <div id="emptyState">
+    <div class="empty-icon">🌌</div>
+    <div class="empty-title">Graph is Empty</div>
+    <div class="empty-sub">Submit the student form first. Data will auto-migrate to Neo4j within 5 seconds, then refresh here.</div>
+  </div>
+</div>
+
+<!-- STATUS BAR -->
+<div id="statusBar">
+  <div class="pulse"></div>
+  <span id="statusText">Auto-refreshing every 5s</span>
+</div>
+
+<script>
+const API = "http://localhost:3001/api";
+let simulation = null;
+let autoRefreshInterval = null;
+const AUTO_REFRESH_MS = 5000;
+
+// ── COLOR MAP ────────────────────────────────────────────────────────────────
+const COLOR = {
+  Student:    getComputedStyle(document.documentElement).getPropertyValue('--student').trim() || '#38bdf8',
+  Department: getComputedStyle(document.documentElement).getPropertyValue('--dept').trim()    || '#fb923c',
+  City:       getComputedStyle(document.documentElement).getPropertyValue('--city').trim()    || '#a78bfa',
+  Course:     getComputedStyle(document.documentElement).getPropertyValue('--course').trim()  || '#34d399',
+};
+const RADIUS = { Student: 22, Department: 18, City: 16, Course: 14 };
+
+// ── LOAD GRAPH ───────────────────────────────────────────────────────────────
+async function loadGraph() {
+  document.getElementById("btnRefresh").disabled = true;
+  try {
+    const res = await fetch(`${API}/graph`);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+
+    document.getElementById("loadingScreen").style.display = "none";
+
+    if (!data.nodes.length) {
+      document.getElementById("emptyState").classList.add("show");
+      updateStats([], []);
+      return;
+    }
+
+    document.getElementById("emptyState").classList.remove("show");
+    renderGraph(data.nodes, data.edges);
+    updateStats(data.nodes, data.edges);
+    document.getElementById("statusText").textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
+  } catch (e) {
+    console.error(e);
+    document.getElementById("loadingScreen").style.display = "none";
+    document.getElementById("statusText").textContent = "⚠ Cannot reach backend";
+  }
+  document.getElementById("btnRefresh").disabled = false;
+}
+
+// ── STATS ────────────────────────────────────────────────────────────────────
+function updateStats(nodes, edges) {
+  document.getElementById("statNodes").textContent = nodes.length;
+  document.getElementById("statEdges").textContent = edges.length;
+  document.getElementById("cntStudent").textContent = nodes.filter(n=>n.label==="Student").length;
+  document.getElementById("cntDept").textContent    = nodes.filter(n=>n.label==="Department").length;
+  document.getElementById("cntCity").textContent    = nodes.filter(n=>n.label==="City").length;
+  document.getElementById("cntCourse").textContent  = nodes.filter(n=>n.label==="Course").length;
+}
+
+// ── RENDER GRAPH (D3 Force) ───────────────────────────────────────────────────
+function renderGraph(nodes, edges) {
+  const container = document.getElementById("graphContainer");
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+  const svg = d3.select("#graphSvg");
+  const g = d3.select("#graphGroup");
+
+  // Clear previous
+  g.selectAll("*").remove();
+  if (simulation) simulation.stop();
+
+  // Build id map
+  const nodeById = new Map(nodes.map(n => [n.id, n]));
+
+  // Filter valid edges
+  const validEdges = edges.filter(e => nodeById.has(e.source) && nodeById.has(e.target));
+
+  // Zoom + pan
+  svg.call(d3.zoom()
+    .scaleExtent([0.2, 4])
+    .on("zoom", (event) => g.attr("transform", event.transform))
+  );
+
+  // Simulation
+  simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(validEdges).id(d => d.id).distance(d => {
+      if (d.source.label === "Student") return 110;
+      return 80;
+    }).strength(0.5))
+    .force("charge", d3.forceManyBody().strength(-320))
+    .force("center", d3.forceCenter(W / 2, H / 2))
+    .force("collision", d3.forceCollide().radius(d => (RADIUS[d.label] || 14) + 12));
+
+  // Edges
+  const link = g.append("g").selectAll("line")
+    .data(validEdges).enter().append("line")
+    .attr("class", "link")
+    .attr("marker-end", "url(#arrow)");
+
+  // Edge labels
+  const linkLabel = g.append("g").selectAll("text")
+    .data(validEdges).enter().append("text")
+    .attr("class", "link-label")
+    .text(d => d.type.replace(/_/g, " "));
+
+  // Nodes
+  const node = g.append("g").selectAll(".node")
+    .data(nodes).enter().append("g")
+    .attr("class", d => `node ${d.label}`)
+    .call(d3.drag()
+      .on("start", (event, d) => {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x; d.fy = d.y;
+      })
+      .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on("end", (event, d) => {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null; d.fy = null;
+      })
+    )
+    .on("click", (event, d) => showNodeDetail(d, node));
+
+  node.append("circle")
+    .attr("r", d => RADIUS[d.label] || 14);
+
+  node.append("text")
+    .attr("dy", "0.35em")
+    .text(d => d.name ? (d.name.length > 14 ? d.name.slice(0, 12) + "…" : d.name) : "");
+
+  // Tick
+  simulation.on("tick", () => {
+    link
+      .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+      .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+
+    linkLabel
+      .attr("x", d => (d.source.x + d.target.x) / 2)
+      .attr("y", d => (d.source.y + d.target.y) / 2);
+
+    node.attr("transform", d => `translate(${d.x},${d.y})`);
+  });
+}
+
+// ── NODE DETAIL ──────────────────────────────────────────────────────────────
+function showNodeDetail(d, nodeSelection) {
+  nodeSelection.classed("selected", n => n.id === d.id);
+  document.getElementById("detailName").textContent = d.name || "—";
+  document.getElementById("nodeHint").style.display = "none";
+
+  const rows = [
+    ["Type", d.label],
+    d.age   ? ["Age", d.age]           : null,
+    d.gpa   ? ["GPA", d.gpa]           : null,
+    d.email ? ["Email", d.email]       : null,
+  ].filter(Boolean);
+
+  document.getElementById("detailRows").innerHTML = rows.map(([k, v]) =>
+    `<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${v}</span></div>`
+  ).join("");
+
+  document.getElementById("nodeDetail").classList.add("show");
+}
+
+// ── AUTO REFRESH WITH RING ────────────────────────────────────────────────────
+let ringProgress = 0;
+const ringCircle = document.getElementById("ringCircle");
+const circumference = 113;
+
+function startAutoRefresh() {
+  ringProgress = 0;
+  let elapsed = 0;
+  const step = 100;
+
+  clearInterval(autoRefreshInterval);
+  autoRefreshInterval = setInterval(() => {
+    elapsed += step;
+    ringProgress = (elapsed / AUTO_REFRESH_MS) * circumference;
+    ringCircle.style.strokeDashoffset = circumference - ringProgress;
+
+    if (elapsed >= AUTO_REFRESH_MS) {
+      elapsed = 0; ringProgress = 0;
+      ringCircle.style.strokeDashoffset = circumference;
+      loadGraph();
+    }
+  }, step);
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+loadGraph();
+startAutoRefresh();
+</script>
+</body>
+</html>
