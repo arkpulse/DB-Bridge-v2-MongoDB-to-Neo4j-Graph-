@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Student Enrollment — DB Bridge</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --cream:  #f5f0e8;
+      --ink:    #1a1410;
+      --amber:  #d4650a;
+      --amber2: #f0820f;
+      --green:  #2d6a4f;
+      --blue:   #1d4e8f;
+      --border: #d8cfc0;
+      --muted:  #8a7a68;
+      --surface:#ede8df;
+      --error:  #b91c1c;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--cream);
+      color: var(--ink);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Texture overlay */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none; z-index: 0; opacity: 0.5;
+    }
+
+    /* ── TOP BAR ── */
+    nav {
+      position: relative; z-index: 2;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 48px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(245,240,232,0.9); backdrop-filter: blur(8px);
+    }
+    .nav-brand {
+      font-family: 'Instrument Serif', serif;
+      font-size: 22px; color: var(--ink);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .nav-brand .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--amber); display: inline-block;
+    }
+    .nav-link {
+      font-size: 13px; font-weight: 500; color: var(--muted);
+      text-decoration: none; padding: 8px 18px;
+      border: 1px solid var(--border); border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .nav-link:hover { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+
+    /* ── HERO ── */
+    .hero {
+      position: relative; z-index: 1;
+      padding: 64px 48px 0;
+      max-width: 860px; margin: 0 auto; width: 100%;
+    }
+    .hero-eyebrow {
+      font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500;
+      letter-spacing: 3px; text-transform: uppercase; color: var(--amber);
+      margin-bottom: 14px;
+    }
+    .hero h1 {
+      font-family: 'Instrument Serif', serif;
+      font-size: clamp(38px, 5vw, 58px);
+      line-height: 1.1; color: var(--ink); margin-bottom: 16px;
+    }
+    .hero h1 em { font-style: italic; color: var(--amber); }
+    .hero p {
+      font-size: 15px; color: var(--muted); max-width: 480px;
+      line-height: 1.7; margin-bottom: 40px;
+    }
+
+    /* Pipeline indicator */
+    .pipeline {
+      display: flex; align-items: center; gap: 0;
+      margin-bottom: 52px; flex-wrap: wrap; gap: 0;
+    }
+    .pipe-step {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 18px; font-size: 12px; font-weight: 600;
+      font-family: 'DM Mono', monospace;
+    }
+    .pipe-step .icon { font-size: 16px; }
+    .pipe-step.active { background: var(--ink); color: var(--cream); border-radius: 8px; }
+    .pipe-step.inactive { color: var(--muted); }
+    .pipe-arrow { color: var(--border); font-size: 18px; margin: 0 4px; }
+
+    /* ── FORM ── */
+    .form-wrap {
+      position: relative; z-index: 1;
+      max-width: 860px; margin: 0 auto; width: 100%;
+      padding: 0 48px 80px;
+    }
+    .form-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 4px 40px rgba(26,20,16,0.08);
+    }
+    .form-card-header {
+      background: var(--ink); color: var(--cream);
+      padding: 24px 36px; display: flex; align-items: center; gap: 12px;
+    }
+    .form-card-header .hicon { font-size: 22px; }
+    .form-card-header h2 { font-family: 'Instrument Serif', serif; font-size: 22px; font-weight: 400; }
+    .form-card-header p { font-size: 12px; color: rgba(245,240,232,0.5); font-family: 'DM Mono', monospace; margin-top: 2px; }
+
+    form { padding: 36px; }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+    .form-full { margin-bottom: 24px; }
+    @media(max-width:640px){ .form-grid { grid-template-columns: 1fr; } nav, .hero, .form-wrap { padding-left: 20px; padding-right: 20px; } }
+
+    .field label {
+      display: block; font-size: 11px; font-weight: 600;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 8px;
+      font-family: 'DM Mono', monospace;
+    }
+    .field label span { color: var(--amber); }
+
+    .field input, .field select, .field textarea {
+      width: 100%; padding: 13px 16px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px; font-size: 14px;
+      font-family: 'DM Sans', sans-serif;
+      color: var(--ink); background: var(--cream);
+      outline: none; transition: all 0.2s;
+      appearance: none;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus {
+      border-color: var(--amber); background: #fff;
+      box-shadow: 0 0 0 3px rgba(212,101,10,0.12);
+    }
+    .field input.error { border-color: var(--error); }
+    .field .hint {
+      font-size: 11px; color: var(--muted); margin-top: 5px;
+      font-family: 'DM Mono', monospace;
+    }
+    .field textarea { resize: vertical; min-height: 80px; }
+
+    /* GPA slider */
+    .gpa-wrap { position: relative; }
+    .gpa-display {
+      position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+      font-family: 'DM Mono', monospace; font-size: 16px; font-weight: 500;
+      color: var(--amber); pointer-events: none;
+    }
+    input[type="range"] {
+      -webkit-appearance: none; width: 100%; height: 6px;
+      border-radius: 3px; background: var(--border); outline: none;
+      padding: 0; cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 22px; height: 22px;
+      border-radius: 50%; background: var(--amber);
+      cursor: pointer; border: 3px solid #fff;
+      box-shadow: 0 2px 8px rgba(212,101,10,0.3);
+    }
+
+    /* Courses tags input */
+    .tags-wrap {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      padding: 10px 12px; border: 1.5px solid var(--border);
+      border-radius: 10px; background: var(--cream);
+      min-height: 50px; cursor: text; transition: all 0.2s;
+    }
+    .tags-wrap:focus-within {
+      border-color: var(--amber); background: #fff;
+      box-shadow: 0 0 0 3px rgba(212,101,10,0.12);
+    }
+    .tag-chip {
+      display: flex; align-items: center; gap: 5px;
+      background: var(--ink); color: var(--cream);
+      padding: 4px 10px 4px 12px; border-radius: 6px;
+      font-size: 12px; font-weight: 500; animation: pop 0.2s ease;
+    }
+    @keyframes pop { from { transform: scale(0.8); opacity:0; } to { transform: scale(1); opacity:1; } }
+    .tag-chip button {
+      background: none; border: none; color: rgba(245,240,232,0.5);
+      cursor: pointer; font-size: 14px; line-height: 1; padding: 0;
+      transition: color 0.15s;
+    }
+    .tag-chip button:hover { color: var(--cream); }
+    #courseInput {
+      border: none; background: transparent; outline: none;
+      font-family: 'DM Sans', sans-serif; font-size: 14px;
+      color: var(--ink); flex: 1; min-width: 120px; padding: 4px 4px;
+    }
+
+    /* Submit */
+    .form-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: 12px; flex-wrap: wrap; gap: 16px;
+    }
+    .form-note { font-size: 12px; color: var(--muted); font-family: 'DM Mono', monospace; }
+    .form-note strong { color: var(--green); }
+    .btn-submit {
+      background: var(--ink); color: var(--cream);
+      border: none; cursor: pointer;
+      padding: 15px 40px; border-radius: 12px;
+      font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 15px;
+      transition: all 0.2s; display: flex; align-items: center; gap: 10px;
+    }
+    .btn-submit:hover { background: var(--amber); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(212,101,10,0.3); }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-submit .spinner {
+      width: 16px; height: 16px; border: 2px solid rgba(245,240,232,0.3);
+      border-top-color: var(--cream); border-radius: 50%; animation: spin 0.6s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn-submit.loading .spinner { display: block; }
+    .btn-submit.loading .btn-text::after { content: "Saving..."; }
+    .btn-submit.loading .btn-text span { display: none; }
+
+    /* ── SUCCESS OVERLAY ── */
+    #successCard {
+      display: none;
+      background: #fff; border: 1px solid var(--border);
+      border-radius: 20px; padding: 48px 40px; text-align: center;
+      box-shadow: 0 4px 40px rgba(26,20,16,0.08);
+    }
+    #successCard.show { display: block; animation: fadeUp 0.4s ease; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+    .success-icon { font-size: 56px; margin-bottom: 16px; }
+    #successCard h2 { font-family: 'Instrument Serif', serif; font-size: 32px; margin-bottom: 8px; }
+    #successCard p { color: var(--muted); font-size: 14px; line-height: 1.7; margin-bottom: 28px; max-width: 400px; margin-left: auto; margin-right: auto; }
+    .success-steps {
+      display: flex; justify-content: center; gap: 0;
+      margin-bottom: 32px; flex-wrap: wrap;
+    }
+    .s-step { display: flex; align-items: center; gap: 6px; font-size: 12px; font-family: 'DM Mono', monospace; }
+    .s-step .badge { padding: 4px 10px; border-radius: 6px; font-weight: 700; }
+    .s-step .badge.mongo { background: rgba(45,106,79,0.12); color: var(--green); }
+    .s-step .badge.neo   { background: rgba(29,78,143,0.12); color: var(--blue); }
+    .s-step .badge.done  { background: rgba(212,101,10,0.12); color: var(--amber); }
+    .s-arrow { color: var(--border); margin: 0 6px; font-size: 16px; }
+    .btn-group { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn-another {
+      padding: 12px 28px; border-radius: 10px; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .btn-another.primary { background: var(--ink); color: var(--cream); border: none; }
+    .btn-another.primary:hover { background: var(--amber); }
+    .btn-another.secondary { background: transparent; color: var(--ink); border: 1.5px solid var(--border); }
+    .btn-another.secondary:hover { border-color: var(--ink); }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; top: 24px; right: 24px;
+      padding: 14px 22px; border-radius: 10px;
+      font-size: 13px; font-family: 'DM Mono', monospace;
+      border: 1px solid; z-index: 999;
+      transform: translateX(120%); transition: transform 0.3s ease;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    }
+    #toast.show { transform: translateX(0); }
+    #toast.success { background: #f0fdf4; border-color: #86efac; color: var(--green); }
+    #toast.error   { background: #fef2f2; border-color: #fca5a5; color: var(--error); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand"><span class="dot"></span> DB Bridge</div>
+  <a href="graph.html" class="nav-link">View Graph → Neo4j</a>
+</nav>
+
+<div class="hero">
+  <div class="hero-eyebrow">Step 01 of 02 — Data Entry</div>
+  <h1>Student <em>Enrollment</em><br/>Registration Form</h1>
+  <p>Fill in the student details below. Data is saved to MongoDB, then automatically migrated to the Neo4j graph database within seconds.</p>
+
+  <div class="pipeline">
+    <div class="pipe-step active"><span class="icon">📝</span> Fill Form</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step inactive"><span class="icon">🍃</span> MongoDB</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step inactive"><span class="icon">🤖</span> Auto-Migrate</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step inactive"><span class="icon">🔵</span> Neo4j Graph</div>
+  </div>
+</div>
+
+<div class="form-wrap">
+  <!-- FORM CARD -->
+  <div class="form-card" id="formCard">
+    <div class="form-card-header">
+      <span class="hicon">🎓</span>
+      <div>
+        <h2>New Student Registration</h2>
+        <p>All fields required · Data goes to MongoDB first</p>
+      </div>
+    </div>
+
+    <form id="studentForm" novalidate>
+      <div class="form-grid">
+        <div class="field">
+          <label>Full Name <span>*</span></label>
+          <input type="text" id="name" placeholder="e.g. Ali Hassan" autocomplete="off"/>
+        </div>
+        <div class="field">
+          <label>Email Address <span>*</span></label>
+          <input type="email" id="email" placeholder="ali@university.edu"/>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label>Age <span>*</span></label>
+          <input type="number" id="age" placeholder="21" min="16" max="60"/>
+        </div>
+        <div class="field">
+          <label>City <span>*</span></label>
+          <select id="city">
+            <option value="">Select city...</option>
+            <option>Karachi</option>
+            <option>Lahore</option>
+            <option>Islamabad</option>
+            <option>Faisalabad</option>
+            <option>Peshawar</option>
+            <option>Quetta</option>
+            <option>Multan</option>
+            <option>Dubai</option>
+            <option>Riyadh</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label>Department <span>*</span></label>
+          <select id="department">
+            <option value="">Select department...</option>
+            <option>Computer Science</option>
+            <option>Software Engineering</option>
+            <option>Data Science</option>
+            <option>Artificial Intelligence</option>
+            <option>Cyber Security</option>
+            <option>Information Technology</option>
+            <option>Electrical Engineering</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>GPA <span>*</span> <span style="float:right;color:var(--amber);font-family:'DM Mono',monospace" id="gpaLabel">3.5</span></label>
+          <input type="range" id="gpa" min="1.0" max="4.0" step="0.1" value="3.5"
+            oninput="document.getElementById('gpaLabel').textContent=parseFloat(this.value).toFixed(1)"/>
+          <div class="hint">Slide to select GPA (1.0 — 4.0)</div>
+        </div>
+      </div>
+
+      <div class="form-full field">
+        <label>Enrolled Courses <span>*</span></label>
+        <div class="tags-wrap" id="tagsWrap" onclick="document.getElementById('courseInput').focus()">
+          <input id="courseInput" placeholder="Type a course and press Enter or comma..."/>
+        </div>
+        <div class="hint">Press <strong>Enter</strong> or <strong>,</strong> after each course name</div>
+        <input type="hidden" id="coursesHidden"/>
+      </div>
+
+      <div class="form-footer">
+        <div class="form-note">
+          After submit → <strong>MongoDB saved</strong> → auto-migrated to Neo4j
+        </div>
+        <button type="submit" class="btn-submit" id="submitBtn">
+          <div class="spinner"></div>
+          <span class="btn-text"><span>Save to MongoDB →</span></span>
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- SUCCESS CARD -->
+  <div id="successCard">
+    <div class="success-icon">🎉</div>
+    <h2 id="successName">Student Saved!</h2>
+    <p>The record has been stored in MongoDB. The auto-migration script will transfer it to Neo4j within <strong>5 seconds</strong>.</p>
+    <div class="success-steps">
+      <div class="s-step"><span class="badge done">✓ Form Submitted</span></div>
+      <div class="s-arrow">→</div>
+      <div class="s-step"><span class="badge mongo">✓ Saved to MongoDB</span></div>
+      <div class="s-arrow">→</div>
+      <div class="s-step"><span class="badge neo">⏳ Migrating to Neo4j…</span></div>
+    </div>
+    <div class="btn-group">
+      <button class="btn-another primary" onclick="resetForm()">+ Add Another Student</button>
+      <button class="btn-another secondary" onclick="window.location.href='graph.html'">View Neo4j Graph →</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ── TAGS INPUT ────────────────────────────────────────────────────────────
+  const courses = [];
+  const courseInput = document.getElementById("courseInput");
+  const tagsWrap = document.getElementById("tagsWrap");
+
+  function addCourse(val) {
+    const v = val.trim().replace(/,$/, "");
+    if (v && !courses.includes(v)) {
+      courses.push(v);
+      const chip = document.createElement("div");
+      chip.className = "tag-chip";
+      chip.dataset.course = v;
+      chip.innerHTML = `${v} <button type="button" onclick="removeCourse('${v.replace(/'/g,"\\'")}', this.parentElement)">×</button>`;
+      tagsWrap.insertBefore(chip, courseInput);
+      document.getElementById("coursesHidden").value = courses.join(",");
+    }
+    courseInput.value = "";
+  }
+
+  function removeCourse(val, el) {
+    courses.splice(courses.indexOf(val), 1);
+    el.remove();
+    document.getElementById("coursesHidden").value = courses.join(",");
+  }
+
+  courseInput.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); addCourse(courseInput.value); }
+    if (e.key === "," ) { e.preventDefault(); addCourse(courseInput.value); }
+    if (e.key === "Backspace" && !courseInput.value && courses.length) {
+      const last = courses[courses.length - 1];
+      removeCourse(last, tagsWrap.querySelector(`[data-course="${last}"]`));
+    }
+  });
+  courseInput.addEventListener("blur", () => { if (courseInput.value.trim()) addCourse(courseInput.value); });
+
+  // ── TOAST ─────────────────────────────────────────────────────────────────
+  function toast(msg, type = "success") {
+    const el = document.getElementById("toast");
+    el.textContent = msg; el.className = `show ${type}`;
+    setTimeout(() => el.className = "", 3500);
+  }
+
+  // ── FORM SUBMIT ───────────────────────────────────────────────────────────
+  document.getElementById("studentForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("submitBtn");
+
+    const payload = {
+      name:       document.getElementById("name").value.trim(),
+      email:      document.getElementById("email").value.trim(),
+      age:        document.getElementById("age").value,
+      city:       document.getElementById("city").value,
+      department: document.getElementById("department").value,
+      gpa:        document.getElementById("gpa").value,
+      courses:    document.getElementById("coursesHidden").value,
+    };
+
+    // Basic validation
+    for (const [k, v] of Object.entries(payload)) {
+      if (!v) { toast(`❌ Please fill in the ${k} field`, "error"); return; }
+    }
+    if (courses.length === 0) { toast("❌ Add at least one course", "error"); return; }
+
+    btn.disabled = true; btn.classList.add("loading");
+
+    try {
+      const res = await fetch("http://localhost:3001/api/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        document.getElementById("formCard").style.display = "none";
+        const sc = document.getElementById("successCard");
+        document.getElementById("successName").textContent = `${payload.name} Saved! 🎓`;
+        sc.classList.add("show");
+      } else {
+        toast(`❌ ${data.error}`, "error");
+      }
+    } catch {
+      toast("❌ Cannot reach backend. Is Docker running?", "error");
+    }
+
+    btn.disabled = false; btn.classList.remove("loading");
+  });
+
+  function resetForm() {
+    document.getElementById("studentForm").reset();
+    document.getElementById("gpaLabel").textContent = "3.5";
+    courses.length = 0;
+    document.querySelectorAll(".tag-chip").forEach(c => c.remove());
+    document.getElementById("coursesHidden").value = "";
+    document.getElementById("successCard").classList.remove("show");
+    document.getElementById("formCard").style.display = "";
+  }
+</script>
+</body>
+</html>
